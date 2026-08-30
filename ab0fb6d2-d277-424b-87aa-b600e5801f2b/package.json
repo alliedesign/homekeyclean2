@@ -6,7 +6,8 @@
     "dev": "vite dev",
     "build": "tsr generate && tsc --noEmit && vite build",
     "start": "node .output/server/index.mjs",
-    "typecheck": "tsr generate && tsc --noEmit"
+    "typecheck": "tsr generate && tsc --noEmit",
+    "seed:blog": "node scripts/seed-blog.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.2",
