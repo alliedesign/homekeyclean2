@@ -14,12 +14,12 @@ export const Route = createFileRoute("/api/data")({
         if (scope === "directory") {
           const city = params.get("city") ?? "";
           const specialty = params.get("specialty") ?? "";
-          const limit = Math.min(60, Math.max(1, Number(params.get("limit") ?? 40)));
+          const limit = Math.min(60, Math.max(1, Number(params.get("limit") ?? 6)));
           const rows = await db()
             .prepare(
               `SELECT c.user_id, c.headline, c.bio, c.areas, c.years_experience, c.rating_sum,
                       c.rating_count, c.jobs_completed, c.avatar, c.hourly_rate_cents, c.plan,
-                      c.specialties, c.accepting, u.name
+                      c.specialties, c.accepting, c.id_verified, c.background_check, u.name
                FROM cleaners c JOIN users u ON u.id = c.user_id
                WHERE c.status = 'active' AND c.accepting = 1
                  AND (? = '' OR c.areas LIKE ?)
@@ -32,6 +32,65 @@ export const Route = createFileRoute("/api/data")({
             .bind(city, `%${city}%`, specialty, `%"${specialty}"%`, limit)
             .all();
           return json({ cleaners: rows.results ?? [] });
+        }
+
+        // "Match me" — for people who do not want to compare forty profiles.
+        // Also public: the whole point is answering before anyone signs up.
+        if (scope === "match") {
+          const zip = params.get("zip") ?? "";
+          if (!/^\d{5}$/.test(zip)) return fail("Enter a 5 digit ZIP code");
+          const specialty = params.get("specialty") ?? "";
+          const rows = await db()
+            .prepare(
+              `WITH origin AS (SELECT lat, lon FROM service_zips WHERE zip = ?)
+               SELECT c.user_id, c.headline, c.areas, c.years_experience, c.rating_sum,
+                      c.rating_count, c.jobs_completed, c.avatar, c.hourly_rate_cents,
+                      c.plan, c.specialties, c.id_verified, c.background_check, u.name,
+                      ROUND(3959 * ACOS(LEAST(1, GREATEST(-1,
+                        SIN(RADIANS(o.lat)) * SIN(RADIANS(z.lat)) +
+                        COS(RADIANS(o.lat)) * COS(RADIANS(z.lat)) *
+                        COS(RADIANS(z.lon) - RADIANS(o.lon))
+                      )))::numeric, 1) AS miles
+                 FROM cleaners c
+                 JOIN users u ON u.id = c.user_id
+                 JOIN service_zips z ON z.zip = c.base_zip
+                 CROSS JOIN origin o
+                WHERE c.status = 'active' AND c.accepting = 1
+                  AND (? = '' OR c.specialties LIKE ?)
+                ORDER BY
+                  CASE WHEN ? = '' THEN 1 WHEN c.specialties LIKE ? THEN 0 ELSE 1 END,
+                  (3959 * ACOS(LEAST(1, GREATEST(-1,
+                    SIN(RADIANS(o.lat)) * SIN(RADIANS(z.lat)) +
+                    COS(RADIANS(o.lat)) * COS(RADIANS(z.lat)) *
+                    COS(RADIANS(z.lon) - RADIANS(o.lon))
+                  )))) <= c.radius_miles DESC,
+                  CASE WHEN c.rating_count = 0 THEN 0
+                       ELSE (c.rating_sum * 1.0 / c.rating_count) END DESC,
+                  c.jobs_completed DESC
+                LIMIT 3`,
+            )
+            .bind(zip, specialty, `%"${specialty}"%`, specialty, `%"${specialty}"%`)
+            .all();
+          return json({ matches: rows.results ?? [] });
+        }
+
+        // Live rate range for a ZIP, so the price question can be answered
+        // before anyone is asked to choose a person or hand over an address.
+        if (scope === "rates") {
+          const zip = params.get("zip") ?? "";
+          const row = await db()
+            .prepare(
+              `SELECT COUNT(*)::int AS n,
+                      MIN(c.hourly_rate_cents)::int AS low,
+                      MAX(c.hourly_rate_cents)::int AS high
+                 FROM cleaners c
+                 LEFT JOIN service_zips z ON z.zip = c.base_zip
+                WHERE c.status = 'active' AND c.accepting = 1
+                  AND (? = '' OR z.zip IS NOT NULL)`,
+            )
+            .bind(zip)
+            .first<{ n: number; low: number | null; high: number | null }>();
+          return json({ rates: row ?? { n: 0, low: null, high: null } });
         }
 
         const user = await currentUser(request);

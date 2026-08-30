@@ -37,7 +37,9 @@ export const Route = createFileRoute("/api/act")({
           const city = String(b.city ?? "");
           const county = countyForCity(city);
           if (!county) return fail("We only cover Los Angeles and Orange County right now");
-          if (!String(b.address ?? "").trim()) return fail("Enter the street address");
+          // Street address is deliberately NOT required here. It is collected
+          // once the cleaner accepts (action "address" below). City and ZIP are,
+          // because coverage and travel radius depend on them.
           if (!/^\d{5}$/.test(String(b.zip ?? ""))) return fail("Enter a 5 digit ZIP code");
           if (!String(b.scheduledAt ?? "")) return fail("Pick a date and time");
 
@@ -52,12 +54,12 @@ export const Route = createFileRoute("/api/act")({
             )
             .bind(
               id, user.id, cleanerId, b.serviceType === "commercial" ? "commercial" : "residential",
-              rate, hours, estimate(rate, hours), leadFeeFor(cleaner.plan), String(b.address),
+              rate, hours, estimate(rate, hours), leadFeeFor(cleaner.plan), null,
               (b.unit as string) || null, city, String(b.zip), county,
               b.bedrooms ? Number(b.bedrooms) : null, b.bathrooms ? Number(b.bathrooms) : null,
               b.sqft ? Number(b.sqft) : null, String(b.scheduledAt), String(b.frequency ?? "once"),
               JSON.stringify(Array.isArray(b.addons) ? b.addons : []), (b.pets as string) || null,
-              (b.accessNotes as string) || null, (b.notes as string) || null,
+              null, (b.notes as string) || null,
             )
             .run();
           return json({ ok: true, referralId: id });
@@ -73,6 +75,27 @@ export const Route = createFileRoute("/api/act")({
           await db()
             .prepare("UPDATE referrals SET status = 'cancelled' WHERE id = ?")
             .bind(row.id)
+            .run();
+          return json({ ok: true });
+        }
+
+        if (action === "address") {
+          const row = await db()
+            .prepare("SELECT * FROM referrals WHERE id = ? AND client_id = ?")
+            .bind(String(b.referralId), user.id)
+            .first<ReferralRow>();
+          if (!row) return fail("That request was not found", 404);
+          if (row.status !== "accepted") {
+            return fail("Add the address once your cleaner has accepted");
+          }
+          const address = String(b.address ?? "").trim();
+          if (!address) return fail("Enter the street address");
+          await db()
+            .prepare(
+              `UPDATE referrals SET address = ?, unit = ?, access_notes = ?,
+                address_provided_at = now() WHERE id = ?`,
+            )
+            .bind(address, (b.unit as string) || null, (b.accessNotes as string) || null, row.id)
             .run();
           return json({ ok: true });
         }

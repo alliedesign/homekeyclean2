@@ -12,6 +12,9 @@ import {
 
 export const Route = createFileRoute("/find")({
   component: Find,
+  validateSearch: (search: Record<string, unknown>) => ({
+    cleaner: typeof search.cleaner === "string" ? search.cleaner : undefined,
+  }),
   head: () => ({ meta: [{ title: "Find a cleaner" }] }),
 });
 
@@ -19,6 +22,7 @@ interface DirectoryCleaner {
   user_id: string; name: string; headline: string | null; bio: string | null; areas: string | null;
   years_experience: number; rating_sum: number; rating_count: number; jobs_completed: number;
   avatar: string | null; hourly_rate_cents: number; plan: string; specialties: string;
+  id_verified?: number; background_check?: number;
 }
 
 const HOUR_CHOICES = [2, 2.5, 3, 3.5, 4, 5, 6, 8];
@@ -34,21 +38,31 @@ function parseList(raw: string | null): string[] {
 
 function Find() {
   const { me } = useMe();
+  const { cleaner: deepLink } = Route.useSearch();
   const [city, setCity] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [rows, setRows] = useState<DirectoryCleaner[] | null>(null);
   const [chosen, setChosen] = useState<DirectoryCleaner | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(() => {
     setRows(null);
     apiGet<{ cleaners: DirectoryCleaner[] }>(
-      `directory&city=${encodeURIComponent(city)}&specialty=${encodeURIComponent(specialty)}`,
+      `directory&city=${encodeURIComponent(city)}&specialty=${encodeURIComponent(specialty)}` +
+        `&limit=${showAll || deepLink ? 60 : 6}`,
     )
       .then((d) => setRows(d.cleaners))
       .catch(() => setRows([]));
-  }, [city, specialty]);
+  }, [city, specialty, showAll, deepLink]);
 
   useEffect(load, [load]);
+
+  // Opened from /match — jump straight to the request panel for that person.
+  useEffect(() => {
+    if (!deepLink || !rows || chosen) return;
+    const hit = rows.find((r) => r.user_id === deepLink);
+    if (hit) setChosen(hit);
+  }, [chosen, deepLink, rows]);
 
   return (
     <>
@@ -62,7 +76,17 @@ function Find() {
           introduce you, then step out of the way. You pay them directly.
         </p>
 
-        <div className="mt-10 flex flex-wrap items-center gap-4 border-y border-hk-line py-5">
+        <div className="mt-8 flex flex-wrap items-center gap-3">
+          <a className="rounded-full bg-hk-accent px-6 py-3 font-hk-display text-base font-medium text-hk-ground transition-colors hover:bg-hk-accent-deep"
+            href="/match">
+            Match me with someone
+          </a>
+          <span className="text-sm text-hk-muted">
+            or browse everyone below and choose yourself
+          </span>
+        </div>
+
+        <div className="mt-8 flex flex-wrap items-center gap-4 border-y border-hk-line py-5">
           <label className="flex items-center gap-3">
             <Icon name="pin" size={18} />
             <select className={`${inputClass} w-auto min-w-[200px]`} onChange={(e) => setCity(e.target.value)} value={city}>
@@ -101,7 +125,7 @@ function Find() {
                 <article className="hk-card flex flex-col overflow-hidden rounded-hk-lg border border-hk-line bg-hk-paper" key={person.user_id}>
                   <div className="hk-card-media relative">
                     <img alt={person.name} className="h-60 w-full object-cover" height={900}
-                      loading="lazy" src={person.avatar ?? "/assets/brand/mark.png"} width={720} />
+                      loading="lazy" src={person.avatar ?? "/assets/brand/mark.png"} onError={(e) => { const t = e.currentTarget; if (t.dataset.fallback !== "1") { t.dataset.fallback = "1"; t.src = "/assets/brand/mark.png"; } }} width={720} />
                     {person.plan === "pro" ? (
                       <span className="absolute left-4 top-4 rounded-full bg-hk-accent px-3 py-1 font-hk-mono text-xs uppercase tracking-[0.1em] text-hk-ground">
                         Featured
@@ -142,6 +166,18 @@ function Find() {
             })}
           </div>
         )}
+
+        {rows !== null && rows.length >= 6 && !showAll ? (
+          <div className="mt-10 text-center">
+            <button className="rounded-full border border-hk-ink/25 px-7 py-3 font-hk-display text-base font-medium text-hk-ink transition-colors hover:bg-hk-ink hover:text-hk-ground"
+              onClick={() => setShowAll(true)} type="button">
+              Show everyone taking work
+            </button>
+            <p className="mt-3 text-sm text-hk-muted">
+              These six fit your filters best. There are more.
+            </p>
+          </div>
+        ) : null}
       </main>
       {chosen ? (
         <RequestPanel cleaner={chosen} onClose={() => setChosen(null)} signedIn={Boolean(me?.user)} />
@@ -217,7 +253,7 @@ function RequestPanel({ cleaner, onClose, signedIn }: {
             <>
               <div className="flex items-center gap-4 pr-20">
                 <img alt="" aria-hidden="true" className="h-16 w-16 rounded-full object-cover"
-                  height={720} src={cleaner.avatar ?? "/assets/brand/mark.png"} width={720} />
+                  height={720} src={cleaner.avatar ?? "/assets/brand/mark.png"} onError={(e) => { const t = e.currentTarget; if (t.dataset.fallback !== "1") { t.dataset.fallback = "1"; t.src = "/assets/brand/mark.png"; } }} width={720} />
                 <div>
                   <h2 className="font-hk-display text-2xl font-semibold tracking-tight text-hk-ink">{cleaner.name}</h2>
                   <p className="mt-1 text-sm text-hk-muted">
@@ -249,11 +285,6 @@ function RequestPanel({ cleaner, onClose, signedIn }: {
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <Field label="Street address">
-                      <input className={inputClass} onChange={set("address")} required value={form.address} />
-                    </Field>
-                  </div>
                   <Field label="City">
                     <select className={inputClass} onChange={set("city")} value={form.city}>
                       {ALL_CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -311,12 +342,17 @@ function RequestPanel({ cleaner, onClose, signedIn }: {
                   </div>
                 </fieldset>
 
-                <Field label="Getting in" hint="Lockbox code, doorman, where the key lives.">
-                  <input className={inputClass} onChange={set("accessNotes")} value={form.accessNotes} />
-                </Field>
                 <Field label="Pets and anything else">
                   <textarea className={inputClass} onChange={set("notes")} rows={2} value={form.notes} />
                 </Field>
+
+                <div className="rounded-hk border border-hk-line bg-hk-accent-wash p-4">
+                  <p className="text-sm leading-relaxed text-hk-accent-deep">
+                    <strong className="font-medium">We are not asking for your address yet.</strong>{" "}
+                    {firstName} only sees your city, ZIP and the job. You add the street address and
+                    entry details after they accept.
+                  </p>
+                </div>
 
                 <div className="rounded-hk border border-hk-line bg-hk-ground p-5">
                   <div className="flex items-baseline justify-between">
@@ -338,6 +374,19 @@ function RequestPanel({ cleaner, onClose, signedIn }: {
                     onChange={(e) => setAck(e.target.checked)} type="checkbox" />
                   <span>{DISCLOSURE_CLIENT}</span>
                 </label>
+
+                <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-hk border border-hk-line px-4 py-3">
+                  {[
+                    cleaner.id_verified ? "ID verified" : null,
+                    cleaner.background_check ? "Background checked" : null,
+                    cleaner.jobs_completed > 0 ? `${cleaner.jobs_completed} jobs completed` : null,
+                    cleaner.years_experience > 0 ? `${cleaner.years_experience} years cleaning` : null,
+                  ].filter(Boolean).map((label) => (
+                    <span className="flex items-center gap-2 font-hk-mono text-xs text-hk-muted" key={String(label)}>
+                      <Icon name="shield" size={14} />{label}
+                    </span>
+                  ))}
+                </div>
 
                 {error ? <Notice tone="error">{error}</Notice> : null}
                 <button className="w-full rounded-full bg-hk-accent px-6 py-3.5 font-hk-display text-base font-medium text-hk-ground transition-colors hover:bg-hk-accent-deep disabled:opacity-60"

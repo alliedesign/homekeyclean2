@@ -60,8 +60,10 @@ export function Wordmark({ tone = "ink" }: { tone?: "ink" | "ground" }) {
 
 const NAV_LINKS = [
   { href: "/find", label: "Find a cleaner" },
+  { href: "/match", label: "Match me" },
   { href: "/#how", label: "How it works" },
   { href: "/#coverage", label: "Coverage" },
+  { href: "/blog", label: "Guides" },
   { href: "/cleaners", label: "For cleaners" },
 ];
 
@@ -98,7 +100,7 @@ export function SiteNav() {
 }
 
 const FOOTER_COLUMNS = [
-  { links: [{ href: "/find", label: "Find a cleaner" }, { href: "/#how", label: "How it works" }, { href: "/account", label: "My requests" }], title: "For clients" },
+  { links: [{ href: "/find", label: "Find a cleaner" }, { href: "/#how", label: "How it works" }, { href: "/blog", label: "Guides" }, { href: "/account", label: "My requests" }], title: "For clients" },
   { links: [{ href: "/cleaners", label: "Join the directory" }, { href: "/cleaners#plans", label: "Plans and fees" }, { href: "/work", label: "My referrals" }, { href: "/signin", label: "Sign in" }], title: "For cleaners" },
   { links: [{ href: "/#coverage", label: "Los Angeles County" }, { href: "/#coverage", label: "Orange County" }, { href: "/find", label: "Commercial cleaning" }], title: "Where we work" },
   { links: [{ href: "/#questions", label: "Common questions" }, { href: "mailto:hello@homekeyclean.com", label: "hello@homekeyclean.com" }], title: "Company" },
