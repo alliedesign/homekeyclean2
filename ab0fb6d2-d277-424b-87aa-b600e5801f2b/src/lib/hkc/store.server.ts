@@ -172,6 +172,13 @@ const SEED = [
 /** Idempotent demo roster. Re-runs until every seeded cleaner matches the
  *  referral model, then costs one cheap count query per request. */
 export async function ensureSeed(): Promise<void> {
+  // Off by default. This used to re-create the six @homekeyclean.com demo
+  // cleaners whenever the 'pro' count fell below three, which meant deleting
+  // them from the database never stuck -- the next request put them back.
+  // Set HKC_DEMO_SEED=true in the environment to restore the old behaviour
+  // when bootstrapping a fresh development database.
+  if (process.env.HKC_DEMO_SEED !== "true") return;
+
   const done = await db()
     .prepare("SELECT COUNT(*) AS n FROM cleaners WHERE plan = 'pro'")
     .first<{ n: number }>();

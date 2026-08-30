@@ -102,7 +102,7 @@ export function Hero() {
                       return (
                         <li className="flex items-center gap-4 py-4" key={person.user_id}>
                           <img alt="" aria-hidden="true" className="h-12 w-12 shrink-0 rounded-full object-cover"
-                            height={720} src={person.avatar ?? "/assets/brand/mark.png"} width={720} />
+                            height={720} src={person.avatar ?? "/assets/brand/mark.png"} onError={(e) => { const t = e.currentTarget; if (t.dataset.fallback !== "1") { t.dataset.fallback = "1"; t.src = "/assets/brand/mark.png"; } }} width={720} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-hk-display text-base font-medium tracking-tight text-hk-ink">
                               {person.name}
